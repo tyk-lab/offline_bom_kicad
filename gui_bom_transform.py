@@ -46,8 +46,8 @@ class BOMTransformGUI:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("BOM 转换与 KiCad 导出工具")
-        self.root.geometry("700x600")
-        self.root.resizable(False, False)  # 固定窗口大小，不可调整
+        self.root.geometry("800x700")  # 增大默认窗口大小
+        self.root.minsize(700, 600)   # 设置最小窗口大小
 
         # 用于线程间通信的队列
         self.update_queue = queue.Queue()
@@ -174,6 +174,12 @@ class BOMTransformGUI:
         return None
 
     def create_bom_tab(self):
+        # 设置网格权重，让组件可以扩展
+        self.bom_frame.columnconfigure(0, weight=0)  # 标签列不扩展
+        self.bom_frame.columnconfigure(1, weight=1)  # 输入框列扩展
+        self.bom_frame.columnconfigure(2, weight=0)  # 按钮列不扩展
+        self.bom_frame.rowconfigure(7, weight=1)    # 输出框行扩展
+
         # BOM转换变量
         self.bom_input_file = tk.StringVar()
         self.bom_output_dir = tk.StringVar(value=os.getcwd())
@@ -185,8 +191,8 @@ class BOMTransformGUI:
         tk.Label(self.bom_frame, text="输入 CSV 文件:").grid(
             row=0, column=0, sticky="w", padx=10, pady=5
         )
-        tk.Entry(self.bom_frame, textvariable=self.bom_input_file, width=50).grid(
-            row=0, column=1, padx=10, pady=5
+        tk.Entry(self.bom_frame, textvariable=self.bom_input_file).grid(
+            row=0, column=1, sticky="ew", padx=10, pady=5
         )
         tk.Button(
             self.bom_frame, text="浏览...", command=self.select_bom_input_file
@@ -196,8 +202,8 @@ class BOMTransformGUI:
         tk.Label(self.bom_frame, text="输出目录:").grid(
             row=1, column=0, sticky="w", padx=10, pady=5
         )
-        tk.Entry(self.bom_frame, textvariable=self.bom_output_dir, width=50).grid(
-            row=1, column=1, padx=10, pady=5
+        tk.Entry(self.bom_frame, textvariable=self.bom_output_dir).grid(
+            row=1, column=1, sticky="ew", padx=10, pady=5
         )
         tk.Button(
             self.bom_frame, text="浏览...", command=self.select_bom_output_dir
@@ -207,16 +213,16 @@ class BOMTransformGUI:
         tk.Label(self.bom_frame, text="项目名称 (可选):").grid(
             row=2, column=0, sticky="w", padx=10, pady=5
         )
-        tk.Entry(self.bom_frame, textvariable=self.bom_project_name, width=50).grid(
-            row=2, column=1, padx=10, pady=5
+        tk.Entry(self.bom_frame, textvariable=self.bom_project_name).grid(
+            row=2, column=1, sticky="ew", padx=10, pady=5
         )
 
         # 映射文件
         tk.Label(self.bom_frame, text="映射配置文件 (可选):").grid(
             row=3, column=0, sticky="w", padx=10, pady=5
         )
-        tk.Entry(self.bom_frame, textvariable=self.bom_mapping_file, width=50).grid(
-            row=3, column=1, padx=10, pady=5
+        tk.Entry(self.bom_frame, textvariable=self.bom_mapping_file).grid(
+            row=3, column=1, sticky="ew", padx=10, pady=5
         )
         tk.Button(
             self.bom_frame, text="浏览...", command=self.select_bom_mapping_file
@@ -225,7 +231,7 @@ class BOMTransformGUI:
         # 选项
         tk.Checkbutton(
             self.bom_frame, text="静默模式 (不显示详细错误)", variable=self.bom_quiet
-        ).grid(row=4, column=0, columnspan=2, sticky="w", padx=10, pady=5)
+        ).grid(row=4, column=0, columnspan=3, sticky="w", padx=10, pady=5)
 
         # 运行按钮
         tk.Button(
@@ -238,16 +244,23 @@ class BOMTransformGUI:
 
         # 输出区域
         tk.Label(self.bom_frame, text="转换输出:").grid(
-            row=6, column=0, sticky="w", padx=10, pady=5
+            row=6, column=0, columnspan=3, sticky="w", padx=10, pady=5
         )
         self.bom_output_text = scrolledtext.ScrolledText(
-            self.bom_frame, width=80, height=12, state="disabled"
+            self.bom_frame, height=12, state="disabled"
         )
         self.bom_output_text.grid(
-            row=7, column=0, columnspan=3, padx=10, pady=5, sticky="ew"
+            row=7, column=0, columnspan=3, padx=10, pady=5, sticky="nsew"
         )
 
     def create_kicad_tab(self):
+        # 设置网格权重，让组件可以扩展
+        self.kicad_frame.columnconfigure(0, weight=0)  # 标签列不扩展
+        self.kicad_frame.columnconfigure(1, weight=1)  # 输入框列扩展
+        self.kicad_frame.columnconfigure(2, weight=0)  # 按钮列不扩展
+        self.kicad_frame.columnconfigure(3, weight=0)  # 按钮列不扩展
+        self.kicad_frame.rowconfigure(8, weight=1)    # 输出框行扩展
+
         # KiCad导出变量
         self.kicad_project_file = tk.StringVar()
         self.kicad_output_dir = tk.StringVar(value="outputs")
@@ -260,30 +273,30 @@ class BOMTransformGUI:
         tk.Label(self.kicad_frame, text="KiCad 项目文件:").grid(
             row=0, column=0, sticky="w", padx=10, pady=5
         )
-        tk.Entry(self.kicad_frame, textvariable=self.kicad_project_file, width=50).grid(
-            row=0, column=1, padx=10, pady=5
+        tk.Entry(self.kicad_frame, textvariable=self.kicad_project_file).grid(
+            row=0, column=1, columnspan=2, sticky="ew", padx=10, pady=5
         )
         tk.Button(
             self.kicad_frame, text="浏览...", command=self.select_kicad_project_file
-        ).grid(row=0, column=2, padx=10, pady=5)
+        ).grid(row=0, column=3, padx=10, pady=5)
 
         # 输出目录
         tk.Label(self.kicad_frame, text="输出目录:").grid(
             row=1, column=0, sticky="w", padx=10, pady=5
         )
-        tk.Entry(self.kicad_frame, textvariable=self.kicad_output_dir, width=50).grid(
-            row=1, column=1, padx=10, pady=5
+        tk.Entry(self.kicad_frame, textvariable=self.kicad_output_dir).grid(
+            row=1, column=1, columnspan=2, sticky="ew", padx=10, pady=5
         )
         tk.Button(
             self.kicad_frame, text="浏览...", command=self.select_kicad_output_dir
-        ).grid(row=1, column=2, padx=10, pady=5)
+        ).grid(row=1, column=3, padx=10, pady=5)
 
         # KiCad CLI路径
         tk.Label(self.kicad_frame, text="KiCad CLI 路径:").grid(
             row=2, column=0, sticky="w", padx=10, pady=5
         )
-        tk.Entry(self.kicad_frame, textvariable=self.kicad_cli_path, width=50).grid(
-            row=2, column=1, padx=10, pady=5
+        tk.Entry(self.kicad_frame, textvariable=self.kicad_cli_path).grid(
+            row=2, column=1, sticky="ew", padx=10, pady=5
         )
         tk.Button(
             self.kicad_frame, text="浏览...", command=self.select_kicad_cli_path
@@ -295,15 +308,15 @@ class BOMTransformGUI:
         # 选项
         tk.Checkbutton(
             self.kicad_frame, text="跳过 ERC/DRC 检查", variable=self.kicad_skip_checks
-        ).grid(row=3, column=0, columnspan=2, sticky="w", padx=10, pady=5)
+        ).grid(row=3, column=0, columnspan=4, sticky="w", padx=10, pady=5)
         tk.Checkbutton(
             self.kicad_frame, text="跳过文件导出", variable=self.kicad_skip_exports
-        ).grid(row=4, column=0, columnspan=2, sticky="w", padx=10, pady=5)
+        ).grid(row=4, column=0, columnspan=4, sticky="w", padx=10, pady=5)
         tk.Checkbutton(
             self.kicad_frame,
             text="导出模式 (检查但只看文件导出结果)",
             variable=self.kicad_export_mode,
-        ).grid(row=5, column=0, columnspan=2, sticky="w", padx=10, pady=5)
+        ).grid(row=5, column=0, columnspan=4, sticky="w", padx=10, pady=5)
 
         # 运行按钮
         tk.Button(
@@ -316,13 +329,13 @@ class BOMTransformGUI:
 
         # 输出区域
         tk.Label(self.kicad_frame, text="导出输出:").grid(
-            row=7, column=0, sticky="w", padx=10, pady=5
+            row=7, column=0, columnspan=4, sticky="w", padx=10, pady=5
         )
         self.kicad_output_text = scrolledtext.ScrolledText(
-            self.kicad_frame, width=80, height=12, state="disabled"
+            self.kicad_frame, height=12, state="disabled"
         )
         self.kicad_output_text.grid(
-            row=8, column=0, columnspan=4, padx=10, pady=5, sticky="ew"
+            row=8, column=0, columnspan=4, padx=10, pady=5, sticky="nsew"
         )
 
     # BOM转换相关方法
@@ -559,7 +572,9 @@ class BOMTransformGUI:
         # 如果没有指定输出框，使用默认的
         if output_text is None:
             if not hasattr(self, "output_text"):
-                self.output_text = scrolledtext.ScrolledText(self.root, width=80, height=15)
+                self.output_text = scrolledtext.ScrolledText(
+                    self.root, width=80, height=15
+                )
                 self.output_text.pack(fill="both", expand=True, padx=10, pady=10)
             output_text = self.output_text
 

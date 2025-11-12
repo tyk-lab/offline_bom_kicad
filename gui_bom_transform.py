@@ -17,6 +17,8 @@ import sys
 import io
 import contextlib
 import subprocess
+import threading
+import queue
 from pathlib import Path
 from typing import Optional
 
@@ -45,6 +47,10 @@ class BOMTransformGUI:
         self.root = root
         self.root.title("BOM 转换与 KiCad 导出工具")
         self.root.geometry("700x600")
+        self.root.resizable(False, False)  # 固定窗口大小，不可调整
+
+        # 用于线程间通信的队列
+        self.update_queue = queue.Queue()
 
         # 创建选项卡
         self.notebook = ttk.Notebook(root)
@@ -62,6 +68,24 @@ class BOMTransformGUI:
 
         # 启动时自动检测KiCad CLI
         self.auto_detect_kicad_cli_on_startup()
+
+        # 启动UI更新检查
+        self._check_update_queue()
+
+    def _check_update_queue(self):
+        """检查更新队列并处理UI更新"""
+        try:
+            while True:
+                update_type, *args = self.update_queue.get_nowait()
+                if update_type == "kicad_output":
+                    self._update_kicad_output(*args)
+                elif update_type == "kicad_error":
+                    self._update_kicad_output_error(*args)
+        except queue.Empty:
+            pass
+
+        # 每100ms检查一次队列
+        self.root.after(100, self._check_update_queue)
 
     def detect_kicad_cli(self) -> Optional[str]:
         """检测可用的KiCad CLI命令"""
@@ -279,6 +303,17 @@ class BOMTransformGUI:
             fg="white",
         ).grid(row=6, column=0, columnspan=4, pady=10)
 
+        # 输出区域
+        tk.Label(self.kicad_frame, text="导出输出:").grid(
+            row=7, column=0, sticky="w", padx=10, pady=5
+        )
+        self.kicad_output_text = scrolledtext.ScrolledText(
+            self.kicad_frame, width=80, height=12, state="disabled"
+        )
+        self.kicad_output_text.grid(
+            row=8, column=0, columnspan=4, padx=10, pady=5, sticky="ew"
+        )
+
     # BOM转换相关方法
     def select_bom_input_file(self):
         file_path = filedialog.askopenfilename(
@@ -391,6 +426,18 @@ class BOMTransformGUI:
             messagebox.showerror("错误", "项目文件不存在")
             return
 
+        # 禁用运行按钮，避免重复点击
+        for child in self.kicad_frame.winfo_children():
+            if isinstance(child, tk.Button) and child.cget("text") == "运行 KiCad 导出":
+                child.config(state="disabled", text="正在导出...")
+                break
+
+        # 清空并启用输出区域
+        self.kicad_output_text.config(state="normal")
+        self.kicad_output_text.delete(1.0, tk.END)
+        self.kicad_output_text.insert(tk.END, "开始 KiCad 导出...\n")
+        self.kicad_output_text.config(state="disabled")
+
         # 构建参数
         args = [self.kicad_project_file.get(), "--output", self.kicad_output_dir.get()]
 
@@ -406,7 +453,84 @@ class BOMTransformGUI:
         if self.kicad_export_mode.get():
             args.append("--export-mode")
 
-        self.run_command(kicad_main, args, "KiCad导出")
+        # 在后台线程中运行导出
+        thread = threading.Thread(target=self._run_kicad_export_thread, args=(args,))
+        thread.daemon = True
+        thread.start()
+
+    def _run_kicad_export_thread(self, args):
+        """在后台线程中运行KiCad导出"""
+        result = None
+        output = ""
+        output_buffer = None
+
+        try:
+            # 重定向 stdout 和 stderr
+            output_buffer = io.StringIO()
+            with contextlib.redirect_stdout(output_buffer), contextlib.redirect_stderr(
+                output_buffer
+            ):
+                result = kicad_main(args)
+
+            output = output_buffer.getvalue()
+
+        except SystemExit as e:
+            # 处理kicad_main中的sys.exit()调用
+            # 此时输出缓冲区可能还没有被刷新，所以我们需要从缓冲区获取内容
+            if output_buffer is not None:
+                output = output_buffer.getvalue()
+            else:
+                output = "导出过程已完成\n"
+            result = e.code
+
+        except Exception as e:
+            # 处理其他异常
+            if output_buffer is not None:
+                output = output_buffer.getvalue() + f"\n运行时错误: {str(e)}\n"
+            else:
+                output = f"运行时错误: {str(e)}\n"
+            result = 1
+
+        # 通过队列发送更新消息到主线程
+        self.update_queue.put(("kicad_output", result, output))
+
+    def _update_kicad_output(self, result, output):
+        """更新KiCad输出显示"""
+        self.kicad_output_text.config(state="normal")
+
+        if result == 0:
+            self.kicad_output_text.insert(tk.END, "\n✅ KiCad导出成功完成！\n\n")
+        else:
+            self.kicad_output_text.insert(
+                tk.END, f"\n❌ KiCad导出失败，退出代码: {result}\n\n"
+            )
+
+        self.kicad_output_text.insert(tk.END, output)
+        self.kicad_output_text.config(state="disabled")
+
+        # 重新启用运行按钮
+        for child in self.kicad_frame.winfo_children():
+            if isinstance(child, tk.Button) and (
+                "KiCad 导出" in child.cget("text") or "正在导出" in child.cget("text")
+            ):
+                child.config(state="normal", text="运行 KiCad 导出")
+                break
+
+    def _update_kicad_output_error(self, error_msg):
+        """更新KiCad输出显示错误"""
+        self.kicad_output_text.config(state="normal")
+        self.kicad_output_text.insert(tk.END, f"\n❌ 运行时错误: {error_msg}\n")
+        self.kicad_output_text.config(state="disabled")
+
+        # 重新启用运行按钮
+        for child in self.kicad_frame.winfo_children():
+            if isinstance(child, tk.Button) and (
+                "KiCad 导出" in child.cget("text") or "正在导出" in child.cget("text")
+            ):
+                child.config(state="normal", text="运行 KiCad 导出")
+                break
+
+        messagebox.showerror("错误", f"运行时错误: {error_msg}")
 
     def run_command(self, main_func, args, operation_name):
         # 创建输出区域（如果不存在）

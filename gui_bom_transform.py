@@ -236,6 +236,17 @@ class BOMTransformGUI:
             fg="white",
         ).grid(row=5, column=0, columnspan=3, pady=10)
 
+        # 输出区域
+        tk.Label(self.bom_frame, text="转换输出:").grid(
+            row=6, column=0, sticky="w", padx=10, pady=5
+        )
+        self.bom_output_text = scrolledtext.ScrolledText(
+            self.bom_frame, width=80, height=12, state="disabled"
+        )
+        self.bom_output_text.grid(
+            row=7, column=0, columnspan=3, padx=10, pady=5, sticky="ew"
+        )
+
     def create_kicad_tab(self):
         # KiCad导出变量
         self.kicad_project_file = tk.StringVar()
@@ -372,7 +383,7 @@ class BOMTransformGUI:
         if self.bom_quiet.get():
             args.append("--quiet")
 
-        self.run_command(bom_main, args, "BOM转换")
+        self.run_command(bom_main, args, "BOM转换", self.bom_output_text)
 
     # KiCad导出相关方法
     def select_kicad_project_file(self):
@@ -425,6 +436,18 @@ class BOMTransformGUI:
         if not os.path.isfile(self.kicad_project_file.get()):
             messagebox.showerror("错误", "项目文件不存在")
             return
+
+        # 检查是否存在原理图文件（用于BOM和原理图PDF导出）
+        project_path = Path(self.kicad_project_file.get())
+        sch_file = project_path.with_suffix(".kicad_sch")
+        if not sch_file.exists():
+            messagebox.showwarning(
+                "警告",
+                f"未找到原理图文件: {sch_file.name}\n\n"
+                "BOM清单和原理图PDF需要原理图文件才能导出。\n"
+                "如果您的项目只有PCB文件，将无法导出这些内容。\n\n"
+                "请确保项目包含 .kicad_sch 文件。",
+            )
 
         # 禁用运行按钮，避免重复点击
         for child in self.kicad_frame.winfo_children():
@@ -532,14 +555,18 @@ class BOMTransformGUI:
 
         messagebox.showerror("错误", f"运行时错误: {error_msg}")
 
-    def run_command(self, main_func, args, operation_name):
-        # 创建输出区域（如果不存在）
-        if not hasattr(self, "output_text"):
-            self.output_text = scrolledtext.ScrolledText(self.root, width=80, height=15)
-            self.output_text.pack(fill="both", expand=True, padx=10, pady=10)
+    def run_command(self, main_func, args, operation_name, output_text=None):
+        # 如果没有指定输出框，使用默认的
+        if output_text is None:
+            if not hasattr(self, "output_text"):
+                self.output_text = scrolledtext.ScrolledText(self.root, width=80, height=15)
+                self.output_text.pack(fill="both", expand=True, padx=10, pady=10)
+            output_text = self.output_text
 
         # 清空输出
-        self.output_text.delete(1.0, tk.END)
+        output_text.config(state="normal")
+        output_text.delete(1.0, tk.END)
+        output_text.config(state="disabled")
 
         # 运行命令，捕获输出
         try:
@@ -552,17 +579,21 @@ class BOMTransformGUI:
 
             output = output_buffer.getvalue()
 
+            output_text.config(state="normal")
             if result == 0:
-                self.output_text.insert(tk.END, f"{operation_name}成功完成！\n\n")
+                output_text.insert(tk.END, f"{operation_name}成功完成！\n\n")
             else:
-                self.output_text.insert(
+                output_text.insert(
                     tk.END, f"{operation_name}失败，退出代码: {result}\n\n"
                 )
 
-            self.output_text.insert(tk.END, output)
+            output_text.insert(tk.END, output)
+            output_text.config(state="disabled")
 
         except Exception as e:
-            self.output_text.insert(tk.END, f"运行时错误: {str(e)}\n")
+            output_text.config(state="normal")
+            output_text.insert(tk.END, f"运行时错误: {str(e)}\n")
+            output_text.config(state="disabled")
             messagebox.showerror("错误", f"运行时错误: {str(e)}")
 
 

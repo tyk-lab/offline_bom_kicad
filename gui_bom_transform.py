@@ -19,6 +19,7 @@ import contextlib
 import subprocess
 import threading
 import queue
+import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -47,7 +48,7 @@ class BOMTransformGUI:
         self.root = root
         self.root.title("BOM 转换与 KiCad 导出工具")
         self.root.geometry("800x700")  # 增大默认窗口大小
-        self.root.minsize(700, 600)   # 设置最小窗口大小
+        self.root.minsize(700, 600)  # 设置最小窗口大小
 
         # 用于线程间通信的队列
         self.update_queue = queue.Queue()
@@ -178,7 +179,7 @@ class BOMTransformGUI:
         self.bom_frame.columnconfigure(0, weight=0)  # 标签列不扩展
         self.bom_frame.columnconfigure(1, weight=1)  # 输入框列扩展
         self.bom_frame.columnconfigure(2, weight=0)  # 按钮列不扩展
-        self.bom_frame.rowconfigure(7, weight=1)    # 输出框行扩展
+        self.bom_frame.rowconfigure(7, weight=1)  # 输出框行扩展
 
         # BOM转换变量
         self.bom_input_file = tk.StringVar()
@@ -259,7 +260,7 @@ class BOMTransformGUI:
         self.kicad_frame.columnconfigure(1, weight=1)  # 输入框列扩展
         self.kicad_frame.columnconfigure(2, weight=0)  # 按钮列不扩展
         self.kicad_frame.columnconfigure(3, weight=0)  # 按钮列不扩展
-        self.kicad_frame.rowconfigure(8, weight=1)    # 输出框行扩展
+        self.kicad_frame.rowconfigure(8, weight=1)  # 输出框行扩展
 
         # KiCad导出变量
         self.kicad_project_file = tk.StringVar()
@@ -374,15 +375,22 @@ class BOMTransformGUI:
             messagebox.showerror("错误", "输入文件不存在")
             return
 
-        # 确保输出目录存在，如果不存在则创建
+        # 处理输出目录：先删除再创建
         output_dir = self.bom_output_dir.get()
-        if not os.path.exists(output_dir):
+        if os.path.exists(output_dir):
             try:
-                os.makedirs(output_dir, exist_ok=True)
-                print(f"创建输出目录: {output_dir}")
+                shutil.rmtree(output_dir)
+                print(f"已删除现有输出目录: {output_dir}")
             except OSError as e:
-                messagebox.showerror("错误", f"无法创建输出目录: {e}")
+                messagebox.showerror("错误", f"无法删除输出目录: {e}")
                 return
+
+        try:
+            os.makedirs(output_dir, exist_ok=True)
+            print(f"创建输出目录: {output_dir}")
+        except OSError as e:
+            messagebox.showerror("错误", f"无法创建输出目录: {e}")
+            return
 
         # 构建参数
         args = ["--input", self.bom_input_file.get(), "--output-dir", output_dir]
@@ -448,6 +456,23 @@ class BOMTransformGUI:
 
         if not os.path.isfile(self.kicad_project_file.get()):
             messagebox.showerror("错误", "项目文件不存在")
+            return
+
+        # 处理输出目录：先删除再创建
+        output_dir = self.kicad_output_dir.get()
+        if os.path.exists(output_dir):
+            try:
+                shutil.rmtree(output_dir)
+                print(f"已删除现有输出目录: {output_dir}")
+            except OSError as e:
+                messagebox.showerror("错误", f"无法删除输出目录: {e}")
+                return
+
+        try:
+            os.makedirs(output_dir, exist_ok=True)
+            print(f"创建输出目录: {output_dir}")
+        except OSError as e:
+            messagebox.showerror("错误", f"无法创建输出目录: {e}")
             return
 
         # 检查是否存在原理图文件（用于BOM和原理图PDF导出）

@@ -3,122 +3,103 @@
 """
 KiCad 自动化导出脚本 (KiCad 9.0+)
 
-功能说明：
-- ERC (电气规则检查)：检查原理图电气连接问题
-- DRC (设计规则检查)：检查 PCB 设计规则违规
-- 导出原理图 PDF
-- 导出 BOM 清单 (CSV 格式)
-- 导出 Gerber 文件包 (ZIP 格式，包含钻孔文件)
-- 导出 PCB 图像 (SVG 正面/背面)
-- 导出 3D STEP 模型 (支持元件 3D 模型替换)
-- 生成构建摘要报告 (Markdown 格式)
+功能：
+- ERC/DRC 质量检查（电气规则、设计规则）
+- 导出原理图 PDF、BOM 清单 (CSV)
+- 导出 Gerber 文件包 (ZIP，含钻孔文件)
+- 导出 PCB 图像 (SVG)、3D STEP 模型
+- 生成构建摘要报告 (Markdown)
 
-使用方法：
-    基础用法：
-        python kicad_export.py <项目文件.kicad_pro>
+基础用法：
+    python kicad_export.py <项目.kicad_pro> [-o 输出目录]
 
-    完整示例：
-        python kicad_export.py 229_Test.kicad_pro -o outputs
+参数：
+    project               KiCad 项目文件 (.kicad_pro)
+    -o, --output          输出目录 (默认: outputs)
+    --kicad-cli           指定 KiCad CLI 路径 (自动检测失败时使用)
+    --gerber-layers       自定义 Gerber 层 (逗号分隔，或 "all" 导出全部)
+    --skip-checks         跳过 ERC/DRC 检查
+    --skip-exports        跳过文件导出 (仅运行检查)
+    --export-mode         导出模式 (运行检查但不影响退出码)
 
-    参数说明：
-        project               [必需] KiCad 项目文件路径 (.kicad_pro)
-        -o, --output          [可选] 输出目录，默认为 "outputs"
-        --kicad-cli           [可选] 指定 KiCad CLI 路径（自动检测失败时使用）
-        --skip-checks         [可选] 跳过 ERC/DRC 检查，只导出文件
-        --skip-exports        [可选] 跳过文件导出，只运行质量检查
-        --export-mode         [可选] 导出模式：运行检查但只根据文件导出结果判断成败
+运行模式：
+    1. 完整模式 (默认)
+       → 运行检查 + 导出文件，任何失败都返回错误退出码
+       → 适用于：本地开发、完整验证
 
-运行模式详解：
-    1. 完整模式（默认，无参数）：
-       python kicad_export.py 229_Test.kicad_pro
-       → 运行 ERC/DRC 检查 + 导出文件
-       → 检查失败或导出失败都会返回错误退出码
-       → 适用于：本地开发、完整质量验证
+    2. 检查模式 (--skip-exports)
+       → 仅运行 ERC/DRC，有错误即失败
+       → 适用于：CI/CD 检查阶段、PR 验证
 
-    2. 检查模式（--skip-exports）：
-       python kicad_export.py 229_Test.kicad_pro --skip-exports
-       → 只运行 ERC/DRC，不导出文件
-       → 有任何错误或警告都会失败（退出码 1）
-       → 适用于：CI/CD 检查阶段、Pull Request 验证
+    3. 纯导出模式 (--skip-checks)
+       → 跳过检查，仅导出文件
+       → 适用于：快速生成文件
 
-    3. 纯导出模式（--skip-checks）：
-       python kicad_export.py 229_Test.kicad_pro --skip-checks
-       → 跳过 ERC/DRC，只导出文件
-       → 只要文件成功生成就返回成功
-       → 适用于：快速生成文件、跳过质量检查
+    4. 导出模式 (--export-mode，推荐用于 CI/CD)
+       → 运行检查生成报告，但只根据文件导出判断成败
+       → 适用于：CI/CD 导出阶段
 
-    4. 导出模式（--export-mode，推荐用于 CI/CD 导出阶段）：
-       python kicad_export.py 229_Test.kicad_pro --export-mode
-       → 运行 ERC/DRC 并生成报告（报告会保存但不影响退出码）
-       → 只根据文件导出成功与否判断退出码
-       → 即使有质量问题也不会阻断流程
-       → 适用于：CI/CD 导出阶段，需要报告但不想因质量问题失败
-
-输出说明：
-    1. 质量检查报告（JSON 格式）：
-       - outputs/erc_report.json - ERC 检查结果
-       - outputs/drc_report.json - DRC 检查结果
-       包含：错误数量、警告数量、排除项、详细违规信息
-
-    2. 导出文件：
-       - outputs/{项目名}-Schematic.pdf - 原理图 PDF
-       - outputs/{项目名}-BOM.csv - BOM 清单
-       - outputs/{项目名}-Gerber.zip - Gerber 文件包
-       - outputs/{项目名}-PCB-Front.svg - PCB 正面图
-       - outputs/{项目名}-PCB-Back.svg - PCB 背面图
-       - outputs/{项目名}-3D.step - 3D STEP 模型
-
-    3. 构建摘要：
-       - outputs/build_summary.md - 构建报告（包含检查结果、文件列表、环境信息）
+输出文件：
+    outputs/
+    ├── erc_report.json            # ERC 检查报告
+    ├── drc_report.json            # DRC 检查报告
+    ├── build_summary.md           # 构建摘要
+    ├── {项目名}-Schematic.pdf     # 原理图
+    ├── {项目名}-BOM.csv           # BOM 清单
+    ├── {项目名}-Gerber.zip        # Gerber 文件包
+    ├── {项目名}-PCB-Front.svg     # PCB 正面图
+    ├── {项目名}-PCB-Back.svg      # PCB 背面图
+    └── {项目名}-3D.step           # 3D 模型
 
 退出码：
     0 - 成功
     1 - 检查失败或导出失败
-    2 - 脚本异常（文件不存在、KiCad CLI 未找到等）
+    2 - 脚本异常 (文件不存在、CLI 未找到等)
 
-KiCad CLI 路径检测：
-    脚本会自动尝试以下命令：
-    - kicad-cli (Linux/macOS 默认)
-    - kicad.kicad-cli (某些发行版)
+使用示例：
 
-    如果自动检测失败，可使用 --kicad-cli 参数手动指定：
+  本地开发：
+    python kicad_export.py project.kicad_pro
+    python kicad_export.py project.kicad_pro -o build
 
-    Linux 示例：
-        python kicad_export.py 229_Test.kicad_pro --kicad-cli /usr/bin/kicad-cli
+  CI/CD 检查阶段：
+    python kicad_export.py project.kicad_pro --skip-exports
 
-    Windows 示例（默认安装路径）：
-        python kicad_export.py 229_Test.kicad_pro --kicad-cli "C:\\Program Files\\KiCad\\9.0\\bin\\kicad-cli.exe"
+  CI/CD 导出阶段：
+    python kicad_export.py project.kicad_pro --export-mode
 
-    Windows 示例（用户安装路径）：
-        python kicad_export.py 229_Test.kicad_pro --kicad-cli "%LOCALAPPDATA%\\Programs\\KiCad\\9.0\\bin\\kicad-cli.exe"
+  自定义 Gerber 层：
+    python kicad_export.py project.kicad_pro --gerber-layers "F.Cu,B.Cu,Edge.Cuts"
+    python kicad_export.py project.kicad_pro --gerber-layers "all"
 
-CI/CD 使用示例：
-    GitLab CI/CD 检查阶段：
-        python kicad_export.py ${PROJECT}.kicad_pro -o ${OUTPUT_DIR} --skip-exports
-        # 只检查质量，不导出文件，有问题就失败
+  指定 KiCad CLI (自动检测失败时)：
+    # Linux/macOS
+    python kicad_export.py project.kicad_pro --kicad-cli /usr/bin/kicad-cli
 
-    GitLab CI/CD 导出阶段：
-        python kicad_export.py ${PROJECT}.kicad_pro -o ${OUTPUT_DIR} --export-mode
-        # 运行检查生成报告，但只根据文件导出结果判断成败
+    # Windows
+    python kicad_export.py project.kicad_pro --kicad-cli "C:\\Program Files\\KiCad\\9.0\\bin\\kicad-cli.exe"
+
+配置说明：
+
+  Gerber 层配置 (优先级：参数 > 环境变量 > 默认值)：
+    默认层：F.Cu, B.Cu, F.Paste, B.Paste, F.Silkscreen, B.Silkscreen,
+            F.Mask, B.Mask, Edge.Cuts
+
+    通过参数：--gerber-layers "F.Cu,B.Cu,Edge.Cuts"
+    通过环境变量：export GERBER_LAYERS="F.Cu,B.Cu,Edge.Cuts"
+    导出全部层：--gerber-layers "all"
+
+  3D STEP 导出：
+    - 使用 --subst-models 替换为 STEP/IGS 模型
+    - 需设置 KICAD9_3DMODEL_DIR 环境变量指向 3D 模型库
+
+  BOM 导出字段：
+    描述, Reference, Qty, Value, Category, Part-DB IPN, lcsc#, manf, manf#
 
 注意事项：
-    1. BOM 导出字段顺序(kicad硬编码)：
-       Description, Reference, Quantity, Value, Category, Part-DB IPN, lcsc#, manf, manf#
-       输出标签（中文）：描述, Reference, Qty, Value, Category, Part-DB IPN, lcsc#, manf, manf#
-
-    2. 3D STEP 导出：
-       - 使用 --subst-models 参数，会尝试使用 STEP/IGS 模型替代 VRML
-       - 需要环境变量 KICAD9_3DMODEL_DIR 指向 3D 模型库路径
-       - 文件大小 < 100KB 视为导出失败（仅包含 PCB 板体）
-
-    3. Gerber 文件：
-       - 自动导出所有必需层（铜层、阻焊层、丝印、边框等）
-       - 钻孔文件使用 Excellon 格式
-       - 所有文件自动打包为 ZIP 格式
-
-    4. 编码兼容性：
-       - Windows 环境下自动处理 UTF-8 编码
-       - 过滤 wxWidgets 调试信息，避免输出干扰
+  - Windows 环境自动处理 UTF-8 编码
+  - 钻孔文件自动生成为 Excellon 格式并打包到 Gerber.zip
+  - 自动过滤 wxWidgets 调试信息
 """
 
 import os
@@ -130,12 +111,26 @@ from pathlib import Path
 from typing import Tuple, Optional, List
 
 
+DEFAULT_GERBER_LAYERS: List[str] = [
+    "F.Cu",
+    "B.Cu",
+    "F.Paste",
+    "B.Paste",
+    "F.Silkscreen",
+    "B.Silkscreen",
+    "F.Mask",
+    "B.Mask",
+    "Edge.Cuts",
+]
+
+
 class KiCadExporter:
     def __init__(
         self,
         project_path: str,
         output_dir: str = "outputs",
         kicad_cli_path: Optional[str] = None,
+        gerber_layers: Optional[str] = None,
     ):
         self.project_path = Path(project_path)
         self.project_name = self.project_path.stem
@@ -144,6 +139,9 @@ class KiCadExporter:
 
         # 检测KiCad CLI命令
         self.kicad_cli = self._detect_kicad_cli(kicad_cli_path)
+
+        # Gerber层配置
+        self.gerber_layers = self._resolve_gerber_layers(gerber_layers)
 
         # 文件路径
         self.sch_file = self.project_path.with_suffix(".kicad_sch")
@@ -155,6 +153,31 @@ class KiCadExporter:
             "drc": {"status": "skipped", "violations": 0},
             "exports": {},
         }
+
+    def _resolve_gerber_layers(
+        self, layers_option: Optional[str]
+    ) -> Optional[List[str]]:
+        """解析Gerber层配置
+
+        返回：
+            None 表示导出全部层；否则返回被限定的层列表
+        """
+
+        raw_value = layers_option or os.getenv("GERBER_LAYERS")
+
+        if raw_value:
+            raw_value = raw_value.strip()
+            if raw_value.lower() in {"all", "*", "any"}:
+                print("ℹ Gerber层设置: 导出全部层")
+                return None
+
+            layers = [layer.strip() for layer in raw_value.split(",") if layer.strip()]
+            if layers:
+                print(f"ℹ Gerber层设置: {', '.join(layers)}")
+                return layers
+
+        print("ℹ Gerber层设置: 使用默认层 (" + ", ".join(DEFAULT_GERBER_LAYERS) + ")")
+        return DEFAULT_GERBER_LAYERS.copy()
 
     def _detect_kicad_cli(self, custom_path: Optional[str] = None) -> str:
         """检测可用的KiCad CLI命令"""
@@ -194,74 +217,10 @@ class KiCadExporter:
             except (FileNotFoundError, subprocess.TimeoutExpired):
                 continue
 
-        # 在Windows上尝试常见安装路径
-        import platform
-
-        if platform.system() == "Windows":
-            possible_paths = []
-
-            # 添加系统Program Files路径
-            program_files = os.environ.get("ProgramFiles", "C:\\Program Files")
-            possible_paths.append(
-                Path(program_files) / "KiCad" / "9.0" / "bin" / "kicad-cli.exe"
-            )
-
-            # 添加用户AppData路径（支持多个驱动器）
-            local_appdata = os.environ.get("LOCALAPPDATA")
-            if local_appdata:
-                possible_paths.append(
-                    Path(local_appdata)
-                    / "Programs"
-                    / "KiCad"
-                    / "9.0"
-                    / "bin"
-                    / "kicad-cli.exe"
-                )
-
-                # 检查其他驱动器（C: 和 D:）
-                for drive in ["C:", "D:"]:
-                    try:
-                        drive_path = Path(drive) / "Users"
-                        if drive_path.exists():
-                            # 查找所有用户目录
-                            for user_dir in drive_path.iterdir():
-                                if user_dir.is_dir():
-                                    appdata_path = (
-                                        user_dir
-                                        / "AppData"
-                                        / "Local"
-                                        / "Programs"
-                                        / "KiCad"
-                                        / "9.0"
-                                        / "bin"
-                                        / "kicad-cli.exe"
-                                    )
-                                    if appdata_path.exists():
-                                        possible_paths.append(appdata_path)
-                    except (OSError, PermissionError):
-                        continue
-
-            # 检查所有可能的路径
-            for cli_path in possible_paths:
-                if cli_path.exists():
-                    try:
-                        result = subprocess.run(
-                            [str(cli_path), "version"],
-                            capture_output=True,
-                            text=True,
-                            timeout=5,
-                        )
-                        if result.returncode == 0:
-                            print(f"✓ 检测到KiCad CLI: {cli_path}")
-                            print(f"  版本: {result.stdout.strip()}")
-                            return str(cli_path)
-                    except (FileNotFoundError, subprocess.TimeoutExpired):
-                        continue
-
         raise RuntimeError(
             "错误: 未找到KiCad CLI命令\n"
             "  请安装KiCad或使用 --kicad-cli 参数指定路径\n"
-            "  尝试过: kicad-cli, kicad.kicad-cli 以及常见安装路径"
+            "  尝试过: kicad-cli, kicad.kicad-cli"
         )
 
     def _run_command(self, args: list, description: str) -> Tuple[bool, str]:
@@ -372,13 +331,13 @@ class KiCadExporter:
                         print(f"  ✗ 发现 {errors} 个错误, {warnings} 个警告")
                     elif warnings > 0:
                         self.results["erc"] = {
-                            "status": "warning",
+                            "status": "passed",
                             "violations": total,
                             "errors": 0,
                             "warnings": warnings,
                             "exclusions": exclusions,
                         }
-                        print(f"  ⚠ 发现 {warnings} 个警告")
+                        print(f"  ⚠ 发现 {warnings} 个警告（不影响通过）")
                     else:
                         self.results["erc"] = {
                             "status": "passed",
@@ -447,13 +406,13 @@ class KiCadExporter:
                         print(f"  ✗ 发现 {errors} 个错误, {warnings} 个警告")
                     elif warnings > 0:
                         self.results["drc"] = {
-                            "status": "warning",
+                            "status": "passed",
                             "violations": total,
                             "errors": 0,
                             "warnings": warnings,
                             "exclusions": exclusions,
                         }
-                        print(f"  ⚠ 发现 {warnings} 个警告")
+                        print(f"  ⚠ 发现 {warnings} 个警告（不影响通过）")
                     else:
                         self.results["drc"] = {
                             "status": "passed",
@@ -538,7 +497,8 @@ class KiCadExporter:
         """导出Gerber文件并打包为ZIP
 
         导出内容：
-        - 所有 Gerber 层（铜层、阻焉层、丝印、边框等）
+        - 默认仅导出指定的关键层（F/B.Cu、F/B.Paste、F/B.Silkscreen、F/B.Mask、Edge.Cuts）
+        - 可通过 --gerber-layers 或 GERBER_LAYERS 覆盖，或设置为 all 导出全部层
         - 钻孔文件（Excellon 格式）
         - 自动打包为 ZIP 文件
         """
@@ -558,6 +518,9 @@ class KiCadExporter:
             str(gerber_dir) + "/",
             str(self.pcb_file),
         ]
+
+        if self.gerber_layers:
+            args_gerber.extend(["--layers", ",".join(self.gerber_layers)])
 
         success1, _ = self._run_command(args_gerber, "导出Gerber层文件")
 
@@ -713,14 +676,17 @@ class KiCadExporter:
 
         return info
 
-    def generate_summary(self) -> str:
+    def generate_summary(self, skip_exports: bool = False) -> str:
         """生成构建摘要（Markdown 格式）
 
         生成包含以下内容的构建报告：
         - 构建状态和基本信息
         - ERC/DRC 质量检查结果（错误/警告统计）
-        - 导出文件列表（成功/失败标识）
+        - 导出文件列表（成功/失败标识，仅在 skip_exports=False 时显示）
         - 测试环境详情（操作系统、工具版本等）
+
+        参数：
+            skip_exports: 是否跳过文件导出报告部分
 
         返回：
             Markdown 格式的报告字符串
@@ -744,12 +710,29 @@ class KiCadExporter:
             if not self.results["exports"].get(key, False)
         ]
 
-        if failed_exports:
-            build_status = "❌ 构建失败"
-            status_emoji = "❌"
+        # 判断构建状态：检测模式下根据ERC/DRC错误判断，导出模式下根据文件导出判断
+        erc_has_errors = self.results["erc"].get("errors", 0) > 0
+        drc_has_errors = self.results["drc"].get("errors", 0) > 0
+
+        if skip_exports:
+            # 只检测模式：根据 ERC/DRC 判断
+            if erc_has_errors or drc_has_errors:
+                build_status = "检测失败"
+                status_emoji = "❌"
+            else:
+                build_status = "检测成功"
+                status_emoji = "✅"
         else:
-            build_status = "✅ 构建成功"
-            status_emoji = "✅"
+            # 完整模式：同时考虑检测和导出
+            if erc_has_errors or drc_has_errors:
+                build_status = "❌ 质量检测失败"
+                status_emoji = "❌"
+            elif failed_exports:
+                build_status = "❌ 文件导出失败"
+                status_emoji = "❌"
+            else:
+                build_status = "✅ 构建成功"
+                status_emoji = "✅"
 
         # 获取北京时间 (UTC+8)
         beijing_tz = timezone(timedelta(hours=8))
@@ -774,12 +757,13 @@ class KiCadExporter:
         # ERC 检查
         erc_result = self.results["erc"]
         if erc_result["status"] == "passed":
-            summary += f"### ✅ ERC (电气规则检查) - 通过\n\n无错误和警告\n\n"
-        elif erc_result["status"] == "warning":
-            summary += f"### ⚠️ ERC (电气规则检查) - 有警告\n\n- 警告: {erc_result.get('warnings', 0)} 个\n"
-            if erc_result.get("exclusions", 0) > 0:
-                summary += f"- 已排除: {erc_result['exclusions']} 个\n"
-            summary += "\n"
+            if erc_result.get("warnings", 0) > 0:
+                summary += f"### ✅ ERC (电气规则检查) - 通过\n\n- 警告: {erc_result.get('warnings', 0)} 个（不影响通过）\n"
+                if erc_result.get("exclusions", 0) > 0:
+                    summary += f"- 已排除: {erc_result['exclusions']} 个\n"
+                summary += "\n"
+            else:
+                summary += f"### ✅ ERC (电气规则检查) - 通过\n\n无错误和警告\n\n"
         elif erc_result["status"] == "failed":
             summary += f"### ❌ ERC (电气规则检查) - 失败\n\n- 错误: {erc_result.get('errors', 0)} 个\n- 警告: {erc_result.get('warnings', 0)} 个\n"
             if erc_result.get("exclusions", 0) > 0:
@@ -791,12 +775,13 @@ class KiCadExporter:
         # DRC 检查
         drc_result = self.results["drc"]
         if drc_result["status"] == "passed":
-            summary += f"### ✅ DRC (设计规则检查) - 通过\n\n无错误和警告\n\n"
-        elif drc_result["status"] == "warning":
-            summary += f"### ⚠️ DRC (设计规则检查) - 有警告\n\n- 警告: {drc_result.get('warnings', 0)} 个\n"
-            if drc_result.get("exclusions", 0) > 0:
-                summary += f"- 已排除: {drc_result['exclusions']} 个\n"
-            summary += "\n"
+            if drc_result.get("warnings", 0) > 0:
+                summary += f"### ✅ DRC (设计规则检查) - 通过\n\n- 警告: {drc_result.get('warnings', 0)} 个（不影响通过）\n"
+                if drc_result.get("exclusions", 0) > 0:
+                    summary += f"- 已排除: {drc_result['exclusions']} 个\n"
+                summary += "\n"
+            else:
+                summary += f"### ✅ DRC (设计规则检查) - 通过\n\n无错误和警告\n\n"
         elif drc_result["status"] == "failed":
             summary += f"### ❌ DRC (设计规则检查) - 失败\n\n- 错误: {drc_result.get('errors', 0)} 个\n- 警告: {drc_result.get('warnings', 0)} 个\n"
             if drc_result.get("exclusions", 0) > 0:
@@ -805,25 +790,29 @@ class KiCadExporter:
         else:
             summary += f"### ℹ️ DRC (设计规则检查) - {drc_result['status']}\n\n"
 
-        summary += "## 📦 生成文件\n\n"
+        # 只在非跳过导出模式下显示文件导出部分
+        if not skip_exports:
+            summary += "## 📦 生成文件\n\n"
 
-        exports = [
-            ("schematic_pdf", "📄 原理图PDF", True),
-            ("bom", "📋 BOM清单(CSV)", True),
-            ("gerber_zip", "📦 Gerber文件包(ZIP)", True),
-            ("pcb_front_svg", "🖼️ PCB正面图(SVG)", True),
-            ("pcb_back_svg", "🖼️ PCB背面图(SVG)", True),
-            ("step_3d", "🎨 3D模型(STEP)", True),
-        ]
+            exports = [
+                ("schematic_pdf", "📄 原理图PDF", True),
+                ("bom", "📋 BOM清单(CSV)", True),
+                ("gerber_zip", "📦 Gerber文件包(ZIP)", True),
+                ("pcb_front_svg", "🖼️ PCB正面图(SVG)", True),
+                ("pcb_back_svg", "🖼️ PCB背面图(SVG)", True),
+                ("step_3d", "🎨 3D模型(STEP)", True),
+            ]
 
-        for key, name, required in exports:
-            exported = self.results["exports"].get(key, False)
-            if exported:  # 如果导出成功
-                summary += f"- ✅ {name}\n"
-            elif required:  # 如果导出失败 且 required=True
-                summary += f"- ❌ {name}\n"
-            else:  # 如果导出失败 且 required=False
-                summary += f"- ⏭️ {name} (可选)\n"
+            for key, name, required in exports:
+                exported = self.results["exports"].get(key, False)
+                if exported:  # 如果导出成功
+                    summary += f"- ✅ {name}\n"
+                elif required:  # 如果导出失败 且 required=True
+                    summary += f"- ❌ {name}\n"
+                else:  # 如果导出失败 且 required=False
+                    summary += f"- ⏭️ {name} (可选)\n"
+
+            summary += "\n"
 
         # 测试环境信息(折叠区域)
         summary += f"\n<details>\n<summary>🔧 测试环境详情</summary>\n\n"
@@ -841,9 +830,13 @@ class KiCadExporter:
 
         return summary
 
-    def save_summary(self):
-        """保存构建摘要"""
-        summary = self.generate_summary()
+    def save_summary(self, skip_exports: bool = False):
+        """保存构建摘要
+
+        参数：
+            skip_exports: 是否跳过文件导出报告部分
+        """
+        summary = self.generate_summary(skip_exports=skip_exports)
         summary_file = self.output_dir / "build_summary.md"
 
         with open(summary_file, "w", encoding="utf-8") as f:
@@ -873,82 +866,78 @@ class KiCadExporter:
             self.export_gerber()
             self.export_pcb_images()
 
-        # 生成摘要
-        self.save_summary()
+        # 生成摘要（传递 skip_exports 参数）
+        self.save_summary(skip_exports=skip_exports)
 
         print("\n" + "=" * 60)
         print("✓ 所有任务完成")
         print("=" * 60)
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main():
     parser = argparse.ArgumentParser(
-        description="KiCad自动化导出工具",
+        description="KiCad 自动化导出工具 (KiCad 9.0+)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 使用示例：
 
-  1. 完整流程 (检查 + 导出，严格模式)：
-     python kicad_export.py 229_Test.kicad_pro
-     → 检查失败或导出失败都会返回错误退出码
+  完整流程 (检查 + 导出)：
+    python kicad_export.py project.kicad_pro
+    python kicad_export.py project.kicad_pro -o build
 
-  2. 只运行质量检查 (CI/CD 检查阶段)：
-     python kicad_export.py 229_Test.kicad_pro --skip-exports
-     → 有任何 ERC/DRC 错误或警告都会失败
+  CI/CD 检查阶段 (仅检查，有错误即失败)：
+    python kicad_export.py project.kicad_pro --skip-exports
 
-  3. 只导出文件 (跳过检查)：
-     python kicad_export.py 229_Test.kicad_pro --skip-checks
-     → 不运行 ERC/DRC，只导出文件
+  CI/CD 导出阶段 (包含检查但不影响退出码)：
+    python kicad_export.py project.kicad_pro --export-mode
 
-  4. 导出模式 (包含检查但只看文件导出结果，推荐用于 CI/CD 导出阶段)：
-     python kicad_export.py 229_Test.kicad_pro --export-mode
-     → 运行 ERC/DRC 生成报告
-     → 但只根据文件导出成功与否判断退出码
-     → 即使有质量问题也不影响 CI/CD 流程
+  自定义 Gerber 层：
+    python kicad_export.py project.kicad_pro --gerber-layers "F.Cu,B.Cu,Edge.Cuts"
+    python kicad_export.py project.kicad_pro --gerber-layers "all"
 
-  5. 指定输出目录：
-     python kicad_export.py 229_Test.kicad_pro -o build
-
-  6. 指定KiCad CLI路径 (Linux)：
-     python kicad_export.py 229_Test.kicad_pro --kicad-cli /usr/local/bin/kicad-cli
-
-  7. 指定KiCad CLI路径 (Windows - 默认路径)：
-     python kicad_export.py 229_Test.kicad_pro --kicad-cli "C:\\Program Files\\KiCad\\9.0\\bin\\kicad-cli.exe"
-
-  8. 指定KiCad CLI路径 (Windows - 用户目录)：
-     python kicad_export.py 229_Test.kicad_pro --skip-checks --kicad-cli "D:\\Users\\用户名\\AppData\\Local\\Programs\\KiCad\\9.0\\bin\\kicad-cli.exe"
-
-  9. 组合使用 (导出模式 + 自定义路径)：
-     python kicad_export.py 229_Test.kicad_pro --export-mode --kicad-cli /custom/kicad-cli -o release
-
-Windows 常见路径：
-  • C:\\Program Files\\KiCad\\9.0\\bin\\kicad-cli.exe (默认安装)
-  • %LOCALAPPDATA%\\Programs\\KiCad\\9.0\\bin\\kicad-cli.exe (用户安装)
-  • D:\\Software\\KiCad\\9.0\\bin\\kicad-cli.exe (自定义路径)
+  指定 KiCad CLI 路径：
+    # Linux/macOS
+    python kicad_export.py project.kicad_pro --kicad-cli /usr/bin/kicad-cli
+    
+    # Windows
+    python kicad_export.py project.kicad_pro --kicad-cli "C:\\Program Files\\KiCad\\9.0\\bin\\kicad-cli.exe"
         """,
     )
 
-    parser.add_argument("project", help="KiCad项目文件路径 (.kicad_pro)")
+    parser.add_argument("project", help="KiCad 项目文件 (.kicad_pro)")
     parser.add_argument(
         "-o", "--output", default="outputs", help="输出目录 (默认: outputs)"
     )
     parser.add_argument(
         "--kicad-cli",
         dest="kicad_cli_path",
-        help="指定KiCad CLI路径 (例: /usr/bin/kicad-cli 或 C:\\Program Files\\KiCad\\9.0\\bin\\kicad-cli.exe)",
+        help="指定 KiCad CLI 路径 (自动检测失败时使用)",
     )
-    parser.add_argument("--skip-checks", action="store_true", help="跳过ERC/DRC检查")
-    parser.add_argument("--skip-exports", action="store_true", help="跳过文件导出")
+    parser.add_argument(
+        "--gerber-layers",
+        help="自定义 Gerber 层 (逗号分隔，默认: "
+        + ",".join(DEFAULT_GERBER_LAYERS)
+        + "，设为 all 导出全部层，或通过 GERBER_LAYERS 环境变量设置)",
+    )
+    parser.add_argument("--skip-checks", action="store_true", help="跳过 ERC/DRC 检查")
+    parser.add_argument(
+        "--skip-exports", action="store_true", help="跳过文件导出 (仅运行检查)"
+    )
     parser.add_argument(
         "--export-mode",
         action="store_true",
-        help="导出模式：运行完整检查但只根据文件导出结果判断成功/失败（忽略ERC/DRC错误）",
+        help="导出模式：运行检查但只根据文件导出判断成败 (推荐用于 CI/CD)",
     )
 
-    args = parser.parse_args(argv)
+    args = parser.parse_args()
 
     try:
-        exporter = KiCadExporter(args.project, args.output, args.kicad_cli_path)
+        exporter = KiCadExporter(
+            args.project,
+            args.output,
+            args.kicad_cli_path,
+            args.gerber_layers,
+        )
         exporter.run_all(skip_checks=args.skip_checks, skip_exports=args.skip_exports)
 
         # 判断运行模式
@@ -956,14 +945,14 @@ Windows 常见路径：
         export_only_mode = args.skip_checks or args.export_mode
 
         if check_only_mode:
-            # 检查模式：ERC 或 DRC 有错误或警告都视为失败
-            erc_failed = exporter.results["erc"]["status"] in ["failed", "warning"]
-            drc_failed = exporter.results["drc"]["status"] in ["failed", "warning"]
+            # 检查模式：ERC 或 DRC 有错误（不包括警告）视为失败
+            erc_failed = exporter.results["erc"]["status"] == "failed"
+            drc_failed = exporter.results["drc"]["status"] == "failed"
 
             if erc_failed or drc_failed:
                 erc_status = exporter.results["erc"]
                 drc_status = exporter.results["drc"]
-                print(f"\n❌ 检查失败:", file=sys.stderr)
+                print(f"\n❌ 检测失败:", file=sys.stderr)
                 if erc_failed:
                     print(
                         f"  ERC: {erc_status.get('errors', 0)} 个错误, {erc_status.get('warnings', 0)} 个警告",
@@ -976,7 +965,15 @@ Windows 常见路径：
                     )
                 sys.exit(1)
             else:
-                print(f"\n✅ 检查通过: ERC 和 DRC 均无问题")
+                erc_status = exporter.results["erc"]
+                drc_status = exporter.results["drc"]
+                total_warnings = erc_status.get("warnings", 0) + drc_status.get(
+                    "warnings", 0
+                )
+                if total_warnings > 0:
+                    print(f"\n✅ 检测通过: 无错误（{total_warnings} 个警告不影响通过）")
+                else:
+                    print(f"\n✅ 检测通过: ERC 和 DRC 均无问题")
                 sys.exit(0)
 
         elif export_only_mode:
@@ -1005,9 +1002,9 @@ Windows 常见路径：
                 sys.exit(0)
 
         else:
-            # 完整模式：检查 + 导出
-            erc_has_issues = exporter.results["erc"]["status"] in ["failed", "warning"]
-            drc_has_issues = exporter.results["drc"]["status"] in ["failed", "warning"]
+            # 完整模式：检查 + 导出，只有错误才算失败
+            erc_has_errors = exporter.results["erc"].get("errors", 0) > 0
+            drc_has_errors = exporter.results["drc"].get("errors", 0) > 0
 
             required_exports = [
                 "schematic_pdf",
@@ -1023,28 +1020,38 @@ Windows 常见路径：
                 if not exporter.results["exports"].get(key, False)
             ]
 
-            if erc_has_issues or drc_has_issues:
+            if erc_has_errors or drc_has_errors:
                 erc_status = exporter.results["erc"]
                 drc_status = exporter.results["drc"]
-                print(f"\n❌ 构建失败: 检查发现问题", file=sys.stderr)
-                if erc_has_issues:
+                print(f"\n❌ 质量检测失败:", file=sys.stderr)
+                if erc_has_errors:
                     print(
                         f"  ERC: {erc_status.get('errors', 0)} 个错误, {erc_status.get('warnings', 0)} 个警告",
                         file=sys.stderr,
                     )
-                if drc_has_issues:
+                if drc_has_errors:
                     print(
                         f"  DRC: {drc_status.get('errors', 0)} 个错误, {drc_status.get('warnings', 0)} 个警告",
                         file=sys.stderr,
                     )
                 sys.exit(1)
             elif failed_exports:
-                print(f"\n❌ 构建失败: 文件导出不完整", file=sys.stderr)
+                print(f"\n❌ 文件导出失败: 以下文件未成功生成", file=sys.stderr)
                 for key in failed_exports:
                     print(f"  - {key}", file=sys.stderr)
                 sys.exit(1)
             else:
-                print(f"\n✅ 构建成功: 检查通过且文件已导出")
+                erc_status = exporter.results["erc"]
+                drc_status = exporter.results["drc"]
+                total_warnings = erc_status.get("warnings", 0) + drc_status.get(
+                    "warnings", 0
+                )
+                if total_warnings > 0:
+                    print(
+                        f"\n✅ 构建成功: 无错误且文件已导出（{total_warnings} 个警告不影响通过）"
+                    )
+                else:
+                    print(f"\n✅ 构建成功: 检查通过且文件已导出")
                 sys.exit(0)
 
     except Exception as e:

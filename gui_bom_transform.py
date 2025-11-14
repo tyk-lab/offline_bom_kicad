@@ -260,12 +260,13 @@ class BOMTransformGUI:
         self.kicad_frame.columnconfigure(1, weight=1)  # 输入框列扩展
         self.kicad_frame.columnconfigure(2, weight=0)  # 按钮列不扩展
         self.kicad_frame.columnconfigure(3, weight=0)  # 按钮列不扩展
-        self.kicad_frame.rowconfigure(8, weight=1)  # 输出框行扩展
+        self.kicad_frame.rowconfigure(9, weight=1)  # 输出框行扩展
 
         # KiCad导出变量
         self.kicad_project_file = tk.StringVar()
         self.kicad_output_dir = tk.StringVar(value="outputs")
         self.kicad_cli_path = tk.StringVar()
+        self.kicad_gerber_layers = tk.StringVar(value="默认层")
         self.kicad_skip_checks = tk.BooleanVar(value=False)
         self.kicad_skip_exports = tk.BooleanVar(value=False)
         self.kicad_export_mode = tk.BooleanVar(value=False)
@@ -306,18 +307,46 @@ class BOMTransformGUI:
             self.kicad_frame, text="自动检测", command=self.auto_detect_kicad_cli
         ).grid(row=2, column=3, padx=10, pady=5)
 
+        # Gerber层配置
+        tk.Label(self.kicad_frame, text="Gerber 层配置:").grid(
+            row=3, column=0, sticky="w", padx=10, pady=5
+        )
+        gerber_combo = ttk.Combobox(
+            self.kicad_frame,
+            textvariable=self.kicad_gerber_layers,
+            values=["默认层", "全部层", "自定义"],
+            state="readonly",
+            width=15,
+        )
+        gerber_combo.grid(row=3, column=1, sticky="w", padx=10, pady=5)
+
+        # 自定义层输入框（初始隐藏）
+        tk.Label(self.kicad_frame, text="自定义层 (逗号分隔):").grid(
+            row=3, column=2, sticky="w", padx=5, pady=5
+        )
+        self.kicad_custom_layers = tk.StringVar(
+            value="F.Cu,B.Cu,F.Paste,B.Paste,F.Silkscreen,B.Silkscreen,F.Mask,B.Mask,Edge.Cuts"
+        )
+        self.custom_layers_entry = tk.Entry(
+            self.kicad_frame, textvariable=self.kicad_custom_layers, state="disabled"
+        )
+        self.custom_layers_entry.grid(row=3, column=3, sticky="ew", padx=10, pady=5)
+
+        # 绑定下拉框变化事件
+        gerber_combo.bind("<<ComboboxSelected>>", self._on_gerber_layers_change)
+
         # 选项
         tk.Checkbutton(
             self.kicad_frame, text="跳过 ERC/DRC 检查", variable=self.kicad_skip_checks
-        ).grid(row=3, column=0, columnspan=4, sticky="w", padx=10, pady=5)
+        ).grid(row=4, column=0, columnspan=4, sticky="w", padx=10, pady=5)
         tk.Checkbutton(
             self.kicad_frame, text="跳过文件导出", variable=self.kicad_skip_exports
-        ).grid(row=4, column=0, columnspan=4, sticky="w", padx=10, pady=5)
+        ).grid(row=5, column=0, columnspan=4, sticky="w", padx=10, pady=5)
         tk.Checkbutton(
             self.kicad_frame,
             text="导出模式 (检查但只看文件导出结果)",
             variable=self.kicad_export_mode,
-        ).grid(row=5, column=0, columnspan=4, sticky="w", padx=10, pady=5)
+        ).grid(row=6, column=0, columnspan=4, sticky="w", padx=10, pady=5)
 
         # 运行按钮
         tk.Button(
@@ -326,17 +355,17 @@ class BOMTransformGUI:
             command=self.run_kicad_export,
             bg="blue",
             fg="white",
-        ).grid(row=6, column=0, columnspan=4, pady=10)
+        ).grid(row=7, column=0, columnspan=4, pady=10)
 
         # 输出区域
         tk.Label(self.kicad_frame, text="导出输出:").grid(
-            row=7, column=0, columnspan=4, sticky="w", padx=10, pady=5
+            row=8, column=0, columnspan=4, sticky="w", padx=10, pady=5
         )
         self.kicad_output_text = scrolledtext.ScrolledText(
             self.kicad_frame, height=12, state="disabled"
         )
         self.kicad_output_text.grid(
-            row=8, column=0, columnspan=4, padx=10, pady=5, sticky="nsew"
+            row=9, column=0, columnspan=4, padx=10, pady=5, sticky="nsew"
         )
 
     # BOM转换相关方法
@@ -428,6 +457,19 @@ class BOMTransformGUI:
         if file_path:
             self.kicad_cli_path.set(file_path)
 
+    def _on_gerber_layers_change(self, event):
+        """处理Gerber层选择变化"""
+        selection = self.kicad_gerber_layers.get()
+        if selection == "自定义":
+            self.custom_layers_entry.config(state="normal")
+            # 如果输入框为空，填充默认值
+            if not self.kicad_custom_layers.get():
+                self.kicad_custom_layers.set(
+                    "F.Cu,B.Cu,F.Paste,B.Paste,F.Silkscreen,B.Silkscreen,F.Mask,B.Mask,Edge.Cuts"
+                )
+        else:
+            self.custom_layers_entry.config(state="disabled")
+
     def auto_detect_kicad_cli_on_startup(self):
         """启动时自动检测KiCad CLI路径（静默模式）"""
         detected_path = self.detect_kicad_cli()
@@ -514,6 +556,16 @@ class BOMTransformGUI:
         if self.kicad_export_mode.get():
             args.append("--export-mode")
 
+        # Gerber层配置
+        gerber_selection = self.kicad_gerber_layers.get()
+        if gerber_selection == "全部层":
+            args.extend(["--gerber-layers", "all"])
+        elif gerber_selection == "自定义":
+            custom_layers = self.kicad_custom_layers.get().strip()
+            if custom_layers:
+                args.extend(["--gerber-layers", custom_layers])
+        # 默认层不需要添加参数
+
         # 在后台线程中运行导出
         thread = threading.Thread(target=self._run_kicad_export_thread, args=(args,))
         thread.daemon = True
@@ -531,7 +583,14 @@ class BOMTransformGUI:
             with contextlib.redirect_stdout(output_buffer), contextlib.redirect_stderr(
                 output_buffer
             ):
-                result = kicad_main(args)
+                # kicad_main 不接受参数，使用 sys.argv
+                old_argv = sys.argv
+                sys.argv = ["kicad_export.py"] + args
+                try:
+                    kicad_main()
+                    result = 0
+                finally:
+                    sys.argv = old_argv
 
             output = output_buffer.getvalue()
 
